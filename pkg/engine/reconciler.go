@@ -3,77 +3,84 @@ package engine
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-// (Keep all your existing structures: Metadata, BusinessObjectives, etc. from our previous step)
+// Metadata defines the target namespace mapping descriptors
 type Metadata struct {
 	Name        string `yaml:"name"`
 	Environment string `yaml:"environment"`
 }
-type Network struct {
-	Type            string `yaml:"type"`
-	ExposedPublicly bool   `yaml:"exposedPublicly"`
-}
-type Database struct {
-	Engine    string `yaml:"engine"`
-	Version   string `yaml:"version"`
-	StorageGB int    `yaml:"storageGB"`
-}
-type InfrastructureContext struct {
-	Provider string   `yaml:"provider"`
-	Region   string   `yaml:"region"`
-	Network  Network  `yaml:"network"`
-	Database Database `yaml:"database"`
-}
-type IntentContractSpec struct {
-	APIVersion string                `yaml:"apiVersion"`
-	Kind       string                `yaml:"kind"`
-	Metadata   Metadata              `yaml:"metadata"`
-	Spec       InfrastructureContext `yaml:"spec"`
+
+// Spec holds the desired state configuration directives chosen by the engineer
+type Spec struct {
+	Provider string `yaml:"provider"`
+	Region   string `yaml:"region"`
 }
 
-// VerifyContractFile parses and validates file syntax
-func VerifyContractFile(filePath string) (IntentContractSpec, error) {
-	var contract IntentContractSpec
-	fileInfo, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
-		return contract, fmt.Errorf("target file '%s' does not exist", filePath)
-	}
-	if fileInfo.IsDir() {
-		return contract, fmt.Errorf("path '%s' is a directory", filePath)
-	}
+// Status holds the live runtime output parameters returned back from active cloud providers
+type Status struct {
+	Phase     string            `yaml:"phase"`
+	UpdatedAt string            `yaml:"updatedAt"`
+	Outputs   map[string]string `yaml:"outputs"`
+}
 
+// IntentContract represents the unified document structure layout for the engine
+type IntentContract struct {
+	APIVersion string   `yaml:"apiVersion"`
+	Kind       string   `yaml:"kind"`
+	Metadata   Metadata `yaml:"metadata"`
+	Spec       Spec     `yaml:"spec"`
+	Status     Status   `yaml:"status"` // 🚀 The new live infrastructure data layer
+}
+
+// VerifyContractFile parses and checks the structural schema validity of a target YAML file
+func VerifyContractFile(filePath string) (*IntentContract, error) {
 	fileBytes, err := os.ReadFile(filePath)
 	if err != nil {
-		return contract, fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("failed to read contract file: %w", err)
 	}
 
-	err = yaml.Unmarshal(fileBytes, &contract)
-	if err != nil {
-		return contract, fmt.Errorf("invalid YAML syntax:\n👉 %w", err)
+	var contract IntentContract
+	if err := yaml.Unmarshal(fileBytes, &contract); err != nil {
+		return nil, fmt.Errorf("malformed YAML schema structure: %w", err)
 	}
 
-	if contract.APIVersion == "" || contract.Kind == "" {
-		return contract, fmt.Errorf("missing mandatory fields 'apiVersion' or 'kind'")
+	// Structural boundary checks
+	if contract.APIVersion != "nexus-io/v1alpha1" || contract.Kind != "IntentContract" {
+		return nil, fmt.Errorf("unsupported API configuration group or resource kind")
 	}
-	return contract, nil
+	if contract.Metadata.Name == "" {
+		return nil, fmt.Errorf("metadata.name parameter cannot be empty")
+	}
+
+	return &contract, nil
 }
 
-// PrintExecutionPlan displays exactly what will be built based on intent data
-func PrintExecutionPlan(contract IntentContractSpec) {
+// PrintExecutionPlan draws out a clean blueprint preview matrix before deployment execution
+func PrintExecutionPlan(c *IntentContract) {
 	fmt.Println("\n📋 Nexus Speculative Execution Plan")
 	fmt.Println("==========================================================")
-	fmt.Printf("Engine will deploy intent matrix [%s] into environment [%s]:\n\n", 
-		contract.Metadata.Name, contract.Metadata.Environment)
-
-	fmt.Println("➕ [AWS Provider Core] will create:")
-	fmt.Printf("   + VPC Network (Type: %s, Public Internet Access: %t)\n", 
-		contract.Spec.Network.Type, contract.Spec.Network.ExposedPublicly)
-	fmt.Printf("   + Relational Database Cluster (Engine: %s v%s, Allocation: %d GB Storage)\n", 
-		contract.Spec.Database.Engine, contract.Spec.Database.Version, contract.Spec.Database.StorageGB)
-	fmt.Printf("   + Orchestration Placement Region: %s\n", contract.Spec.Region)
+	fmt.Printf("🏢 Resource Target:  %s\n", c.Metadata.Name)
+	fmt.Printf("🌐 Environment:      %s\n", c.Metadata.Environment)
+	fmt.Printf("☁️  Cloud Provider:   %s (%s)\n", c.Spec.Provider, c.Spec.Region)
+	fmt.Println("----------------------------------------------------------")
+	fmt.Println("➕ [CREATE] Direct cloud assets matching core intent spec.")
 	fmt.Println("==========================================================")
-	fmt.Println("Plan: 3 resources to add, 0 to alter, 0 to destroy.")
+}
+
+// GenerateRuntimeStatus simulates cloud provider API responses upon successful provisioning
+func GenerateRuntimeStatus() Status {
+	liveOutputs := make(map[string]string)
+	liveOutputs["instance_id"] = "i-0bc78d129fa03eefb"
+	liveOutputs["public_ip"]   = "54.210.43.87"
+	liveOutputs["dns_url"]     = "http://payment-lb-184920.us-east-1.elb.amazonaws.com"
+
+	return Status{
+		Phase:     "Deployed",
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Outputs:   liveOutputs,
+	}
 }
