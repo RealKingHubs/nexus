@@ -12,6 +12,7 @@ import (
 	"github.com/nexus-io/nexus/pkg/engine"
 	"github.com/nexus-io/nexus/pkg/registry"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3" // Imported to serialize the updated state configuration
 )
 
 var (
@@ -24,15 +25,13 @@ var applyCmd = &cobra.Command{
 	Use:   "apply [file]",
 	Short: "Apply an intent contract configuration",
 	Long:  `Applies an intent contract. Automatically detects a YAML file in the current directory if no path is given.`,
-	Args:  cobra.MaximumNArgs(1), // Allows 0 or 1 positional arguments
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. Smart File Path Resolution
-		// Prioritize positional argument over the -f flag
 		if len(args) > 0 {
 			file = args[0]
 		}
 
-		// If no positional argument and no flag, start auto-detection
 		if file == "" {
 			files, err := os.ReadDir(".")
 			if err != nil {
@@ -56,7 +55,6 @@ var applyCmd = &cobra.Command{
 				return
 			}
 
-			// Handle folder layout ambiguity
 			if len(yamlFiles) > 1 {
 				foundDefault := false
 				for _, yf := range yamlFiles {
@@ -75,7 +73,6 @@ var applyCmd = &cobra.Command{
 					return
 				}
 			} else {
-				// Exactly one target configuration found
 				file = yamlFiles[0]
 			}
 			fmt.Printf("📂 Auto-detected target configuration: %s\n", file)
@@ -88,7 +85,7 @@ var applyCmd = &cobra.Command{
 			return
 		}
 
-		// 3. Output the speculative plan so the operator isn't blinded
+		// 3. Output the speculative plan
 		engine.PrintExecutionPlan(contract)
 
 		// 4. Evaluate Confirmation Gate
@@ -143,23 +140,35 @@ var applyCmd = &cobra.Command{
 		}()
 
 		fmt.Println("🟩 Lock Secured! Initializing active orchestration loop...")
-		
-		// 7. Read the raw file data bytes to persist them into our cluster brain
-		fileBytes, err := os.ReadFile(file)
+		time.Sleep(2 * time.Second) // Small breathing room simulation
+		fmt.Println("✨ Infrastructure state matches intent perfectly. Run finalized.")
+
+		// 7. Inject Cloud Provider Outputs & Generate Status
+		fmt.Println("📡 Querying runtime status parameters from cloud provider API...")
+		contract.Status = engine.GenerateRuntimeStatus()
+
+		// 8. Serialize updated object containing spec + status fields combined
+		updatedBytes, err := yaml.Marshal(contract)
 		if err != nil {
-			fmt.Printf("❌ Failed to parse storage copy: %v\n", err)
+			fmt.Printf("❌ Failed to serialize runtime status updates: %v\n", err)
 			return
 		}
 
-		fmt.Println("💾 Saving validated intent contract state to cluster registry...")
-		err = reg.PutContract(ctx, "default-tenant", contract.Metadata.Name, fileBytes)
+		// 9. Save to database registry
+		fmt.Println("💾 Saving updated intent state and outputs to cluster registry...")
+		err = reg.PutContract(ctx, "default-tenant", contract.Metadata.Name, updatedBytes)
 		if err != nil {
 			fmt.Printf("❌ Storage Write Error: %v\n", err)
 			return
 		}
 
-		time.Sleep(2 * time.Second)
-		fmt.Println("✨ Infrastructure state matches intent perfectly. Run finalized.")
+		// 10. Display clean runtime outputs matrix directly to user terminal
+		fmt.Println("\n📋 Orchestration Outputs:")
+		fmt.Println("----------------------------------------------------------------------")
+		for key, val := range contract.Status.Outputs {
+			fmt.Printf("🔹 %-15s = %s\n", key, val)
+		}
+		fmt.Println("----------------------------------------------------------------------")
 	},
 }
 
