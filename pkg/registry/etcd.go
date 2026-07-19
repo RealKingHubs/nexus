@@ -115,3 +115,20 @@ func (r *EtcdRegistry) FetchContractsByPrefix(ctx context.Context, tenantID stri
 	}
 	return results, nil
 }
+
+// GetContract retrieves a single contract's raw configuration bytes from etcd
+func (r *EtcdRegistry) GetContract(ctx context.Context, tenantID, contractCode string) ([]byte, error) {
+	key := fmt.Sprintf("_nexus/v1/tenants/%s/contracts/%s", tenantID, contractCode)
+	
+	resp, err := r.client.Get(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch contract from cluster database: %w", err)
+	}
+
+	// If the key doesn't exist, return nil without an error
+	if len(resp.Kvs) == 0 {
+		return nil, nil
+	}
+
+	return resp.Kvs[0].Value, nil
+}
