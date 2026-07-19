@@ -144,3 +144,13 @@ func (r *EtcdRegistry) ForceUnlock(ctx context.Context, tenantID, environment, c
 	}
 	return nil
 }
+
+// DeleteContract removes a contract configuration entirely from the cluster brain
+func (r *EtcdRegistry) DeleteContract(ctx context.Context, tenantID, contractCode string) error {
+	key := fmt.Sprintf("_nexus/v1/tenants/%s/contracts/%s", tenantID, contractCode)
+	_, err := r.client.Delete(ctx, key)
+	if err != nil {
+		return fmt.Errorf("failed to purge contract state from registry: %w", err)
+	}
+	return nil
+}
