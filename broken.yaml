@@ -1,0 +1,8 @@
+apiVersion: nexus.io/v1alpha1
+kind: IntentContract
+metadata:
+  name: payment-backend-service
+spec:
+  infrastructureContext:
+    provider: aws
+    region: us-east-1 # 👈 Broken indentation space right here!

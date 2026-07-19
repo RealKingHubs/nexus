@@ -1,0 +1,14 @@
+apiVersion: nexus.io/v1alpha1
+kind: IntentContract
+metadata:
+  name: payment-backend-service
+spec:
+  provider: aws
+  region: us-east-1
+  network:
+    type: isolated-vpc
+    exposedPublicly: true
+  database:
+    engine: postgres
+    version: "15"
+    storageGB: 50
