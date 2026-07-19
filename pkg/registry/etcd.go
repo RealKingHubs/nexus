@@ -132,3 +132,15 @@ func (r *EtcdRegistry) GetContract(ctx context.Context, tenantID, contractCode s
 
 	return resp.Kvs[0].Value, nil
 }
+
+// ForceUnlock removes an active lock key directly from etcd to clear a stalled pipeline
+func (r *EtcdRegistry) ForceUnlock(ctx context.Context, tenantID, environment, contractCode string) error {
+	// Reconstructing the specific key namespace used by the lock manager
+	lockKey := fmt.Sprintf("_nexus/v1/locks/tenants/%s/environments/%s/contracts/%s", tenantID, environment, contractCode)
+	
+	_, err := r.client.Delete(ctx, lockKey)
+	if err != nil {
+		return fmt.Errorf("failed to forcefully delete environment lock node: %w", err)
+	}
+	return nil
+}
