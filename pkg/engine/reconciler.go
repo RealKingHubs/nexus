@@ -3,7 +3,6 @@ package engine
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,8 +15,13 @@ type Metadata struct {
 
 // Spec holds the desired state configuration directives chosen by the engineer
 type Spec struct {
-	Provider string `yaml:"provider"`
-	Region   string `yaml:"region"`
+	Provider     string            `yaml:"provider"`
+	Region       string            `yaml:"region,omitempty"`
+	Image        string            `yaml:"image,omitempty"`         // Container image OR AWS AMI ID
+	InstanceType string            `yaml:"instance_type,omitempty"` // AWS EC2 size (e.g. t2.micro)
+	Ports        []string          `yaml:"ports,omitempty"`         // Container port mappings (e.g. 8080:80)
+	Environment  map[string]string `yaml:"environment,omitempty"`   // Runtime ENV variables
+	Replicas     int               `yaml:"replicas,omitempty"`
 }
 
 // Status holds the live runtime output parameters returned back from active cloud providers
@@ -33,7 +37,7 @@ type IntentContract struct {
 	Kind       string   `yaml:"kind"`
 	Metadata   Metadata `yaml:"metadata"`
 	Spec       Spec     `yaml:"spec"`
-	Status     Status   `yaml:"status"` // The new live infrastructure data layer
+	Status     Status   `yaml:"status"`
 }
 
 // VerifyContractFile parses and checks the structural schema validity of a target YAML file
@@ -66,21 +70,13 @@ func PrintExecutionPlan(c *IntentContract) {
 	fmt.Printf("🏢 Resource Target:  %s\n", c.Metadata.Name)
 	fmt.Printf("🌐 Environment:      %s\n", c.Metadata.Environment)
 	fmt.Printf("☁️  Cloud Provider:   %s (%s)\n", c.Spec.Provider, c.Spec.Region)
+	if c.Spec.Image != "" {
+		fmt.Printf("📦 Image / AMI:      %s\n", c.Spec.Image)
+	}
+	if c.Spec.InstanceType != "" {
+		fmt.Printf("⚡ Instance Type:    %s\n", c.Spec.InstanceType)
+	}
 	fmt.Println("----------------------------------------------------------")
 	fmt.Println("➕ [CREATE] Direct cloud assets matching core intent spec.")
 	fmt.Println("==========================================================")
-}
-
-// GenerateRuntimeStatus simulates cloud provider API responses upon successful provisioning
-func GenerateRuntimeStatus() Status {
-	liveOutputs := make(map[string]string)
-	liveOutputs["instance_id"] = "i-0bc78d129fa03eefb"
-	liveOutputs["public_ip"]   = "54.210.43.87"
-	liveOutputs["dns_url"]     = "http://payment-lb-184920.us-east-1.elb.amazonaws.com"
-
-	return Status{
-		Phase:     "Deployed",
-		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-		Outputs:   liveOutputs,
-	}
 }

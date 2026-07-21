@@ -29,7 +29,7 @@ var applyCmd = &cobra.Command{
 	Long:    `Applies an intent contract to reach target state. Automatically detects a YAML file in the current directory if no path is explicitly provided.`,
 	Example: `  nexus apply
   nexus apply docker-test.yaml
-  nexus apply docker-test.yaml -y`,
+  nexus apply aws-test.yaml -y`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. Smart File Path Resolution
@@ -146,11 +146,10 @@ var applyCmd = &cobra.Command{
 
 		fmt.Println("🟩 Lock Secured! Executing target infrastructure reconciliation...")
 
-		// 7. Inject Live Cloud Provider Interface Driver Processing Logic
+		// 7. Live Cloud Provider Interface Driver Processing Logic
 		fmt.Printf("📡 Initializing live cloud provider infrastructure driver for: %s...\n", contract.Spec.Provider)
 		var liveStatus engine.Status
 
-		// Use a dedicated execution context (3-minute allowance for image pulls/cloud provisioning)
 		execCtx, execCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer execCancel()
 
@@ -163,12 +162,23 @@ var applyCmd = &cobra.Command{
 			}
 			liveStatus, err = prov.Reconcile(execCtx, contract.Metadata.Name, contract.Spec)
 			if err != nil {
-				fmt.Printf("❌ Infrastructure Orchestration Convergence Failure: %v\n", err)
+				fmt.Printf("❌ Docker Orchestration Convergence Failure: %v\n", err)
+				return
+			}
+		case "aws":
+			prov, err := provider.NewAWSProvider(execCtx, contract.Spec.Region)
+			if err != nil {
+				fmt.Printf("❌ AWS Provider Setup Exception: %v\n", err)
+				return
+			}
+			liveStatus, err = prov.Reconcile(execCtx, contract.Metadata.Name, contract.Spec)
+			if err != nil {
+				fmt.Printf("❌ AWS Infrastructure Convergence Failure: %v\n", err)
 				return
 			}
 		default:
-			fmt.Printf("⚠️ Provider '%s' lacking native runtime driver. Falling back to simulation mode...\n", contract.Spec.Provider)
-			liveStatus = engine.GenerateRuntimeStatus()
+			fmt.Printf("❌ Provider '%s' is not supported. Supported providers: 'docker', 'aws'.\n", contract.Spec.Provider)
+			return
 		}
 
 		contract.Status = liveStatus

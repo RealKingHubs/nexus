@@ -2,35 +2,58 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/nexus-io/nexus/pkg/engine" // Importing your backend engine logic
+	"os"
+	"path/filepath"
+
+	"github.com/nexus-io/nexus/pkg/engine"
 	"github.com/spf13/cobra"
 )
 
 var verifyFile string
 
 var verifyCmd = &cobra.Command{
-	Use:   "verify",
-	Short: "Verify contract syntax and policies without applying changes",
+	Use:     "verify [spec.yaml]",
+	GroupID: "core",
+	Short:   "Verify contract syntax and policies without applying changes",
+	Args:    cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if verifyFile == "" {
-			fmt.Println("❌ Error: Path to contract file required via -f or --file")
-			return
+		if len(args) > 0 {
+			verifyFile = args[0]
 		}
-		
-		fmt.Printf("🔍 Nexus Engine evaluating file target: %s...\n", verifyFile)
-		
-		// 🔌 Fixed: Added the blank identifier '_' to catch the contract return value
-		_, err := engine.VerifyContractFile(verifyFile)
-		if err != nil {
-			fmt.Printf("❌ Policy Validation Failure: %v\n", err)
+
+		if verifyFile == "" {
+			// Auto-detect single yaml or intent.yaml
+			files, err := os.ReadDir(".")
+			if err != nil {
+				fmt.Printf("❌ Error reading current directory: %v\n", err)
+				return
+			}
+			for _, f := range files {
+				if !f.IsDir() && (filepath.Ext(f.Name()) == ".yaml" || filepath.Ext(f.Name()) == ".yml") {
+					verifyFile = f.Name()
+					break
+				}
+			}
+		}
+
+		if verifyFile == "" {
+			fmt.Println("❌ Error: No intent contract file found. Specify one with: nexus verify [filename]")
 			return
 		}
 
-		fmt.Println("✅ Verification passed! Contract is secure and ready to deploy.")
+		fmt.Printf("🔍 Nexus Engine evaluating file target: %s...\n", verifyFile)
+		contract, err := engine.VerifyContractFile(verifyFile)
+		if err != nil {
+			fmt.Printf("❌ Validation Failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("🟩 Contract syntax and policy validation passed successfully!")
+		engine.PrintExecutionPlan(contract)
 	},
 }
 
 func init() {
-	verifyCmd.Flags().StringVarP(&verifyFile, "file", "f", "", "Path to the intent contract file to check")
+	verifyCmd.Flags().StringVarP(&verifyFile, "file", "f", "", "Explicit path to the intent contract YAML file")
 	rootCmd.AddCommand(verifyCmd)
 }

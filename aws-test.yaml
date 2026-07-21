@@ -1,0 +1,10 @@
+apiVersion: nexus-io/v1alpha1
+kind: IntentContract
+metadata:
+  name: nexus-cloud-web
+  environment: production
+spec:
+  provider: aws
+  region: us-east-1
+  instance_type: t3.micro
+  image: ami-0c7217cdde317cfec

@@ -29,7 +29,7 @@ var destroyCmd = &cobra.Command{
 and purges all tracked cloud/container assets from the active environment registry.`,
 	Example: `  nexus destroy
   nexus destroy docker-test.yaml
-  nexus destroy docker-test.yaml -y`,
+  nexus destroy aws-test.yaml -y`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. Smart File Path Resolution
@@ -124,7 +124,7 @@ and purges all tracked cloud/container assets from the active environment regist
 		}
 		defer reg.Close()
 
-		// 6. Acquire Lock Protection (10s lock timeout)
+		// 6. Acquire Lock Protection
 		lockCtx, lockCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer lockCancel()
 
@@ -143,7 +143,7 @@ and purges all tracked cloud/container assets from the active environment regist
 			_ = reg.ReleaseDistributedLock(context.Background(), leaseID)
 		}()
 
-		// 7. Execute Active Teardown Driver Action Operations (3-minute driver allowance)
+		// 7. Execute Active Teardown Driver Action Operations
 		fmt.Printf("🟩 Lock Secured! Dispatching destructive driver logic for: %s...\n", contract.Spec.Provider)
 
 		execCtx, execCancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -158,12 +158,23 @@ and purges all tracked cloud/container assets from the active environment regist
 			}
 			err = prov.Destroy(execCtx, contract.Metadata.Name, contract.Spec)
 			if err != nil {
-				fmt.Printf("❌ Destructive Provider Driver Execution Failure: %v\n", err)
+				fmt.Printf("❌ Destructive Docker Driver Execution Failure: %v\n", err)
+				return
+			}
+		case "aws":
+			prov, err := provider.NewAWSProvider(execCtx, contract.Spec.Region)
+			if err != nil {
+				fmt.Printf("❌ AWS Provider Setup Exception: %v\n", err)
+				return
+			}
+			err = prov.Destroy(execCtx, contract.Metadata.Name, contract.Spec)
+			if err != nil {
+				fmt.Printf("❌ AWS Infrastructure Teardown Failure: %v\n", err)
 				return
 			}
 		default:
-			fmt.Printf("⚠️ Provider '%s' bypassing active driver teardown (Simulation Mode).\n", contract.Spec.Provider)
-			time.Sleep(2 * time.Second)
+			fmt.Printf("❌ Provider '%s' is not supported for teardown. Supported providers: 'docker', 'aws'.\n", contract.Spec.Provider)
+			return
 		}
 
 		fmt.Println("💥 Remote infrastructure assets torn down successfully.")
