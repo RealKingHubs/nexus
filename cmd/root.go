@@ -9,21 +9,30 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "nexus",
-	Short: "Nexus is an intent-driven cloud-native infrastructure control plane",
-	Long: `Nexus acts as a declarative coordination layer sitting over cloud resources. 
-It processes intent contracts, locks cluster states via distributed leases, 
-validates schemas, and enforces real-world cloud infrastructure convergence.
-
-Complete documentation available at: https://github.com/nexus-io/nexus`,
+	Short: "Intent-driven, cloud-native infrastructure control plane",
+	Long: `⚡ NEXUS CONTROL PLANE ENGINE
+========================================================================
+Nexus is an intent-driven control plane CLI that provisions, monitors, 
+and continuously self-heals infrastructure workloads across Docker and 
+cloud providers using etcd state backends.`,
+	SilenceErrors: true, // Prevents duplicate error output since Execute() handles printing
 }
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ CLI Execution Error: %v\n", err)
+		fmt.Printf("❌ Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func init() {
-	// Root flags can be declared here if needed across all commands globally
+	// 1. Organize commands into distinct visual groups
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "core",
+		Title: "📦 CORE INFRASTRUCTURE OPERATIONS:",
+	})
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "daemon",
+		Title: "🔄 AUTOMATION & SELF-HEALING DAEMON:",
+	})
 }
