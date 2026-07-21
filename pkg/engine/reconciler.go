@@ -33,7 +33,7 @@ type IntentContract struct {
 	Kind       string   `yaml:"kind"`
 	Metadata   Metadata `yaml:"metadata"`
 	Spec       Spec     `yaml:"spec"`
-	Status     Status   `yaml:"status"` // 🚀 The new live infrastructure data layer
+	Status     Status   `yaml:"status"` // The new live infrastructure data layer
 }
 
 // VerifyContractFile parses and checks the structural schema validity of a target YAML file

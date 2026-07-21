@@ -1,0 +1,8 @@
+apiVersion: nexus-io/v1alpha1
+kind: IntentContract
+metadata:
+  name: nexus-local-web
+  environment: development
+spec:
+  provider: docker
+  region: localhost
