@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/nexus-io/nexus/pkg/engine"
-	"github.com/nexus-io/nexus/pkg/registry"
 	"github.com/nexus-io/nexus/pkg/provider"
+	"github.com/nexus-io/nexus/pkg/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -22,11 +22,15 @@ var (
 )
 
 var destroyCmd = &cobra.Command{
-	Use:   "destroy [file]",
-	Short: "Destroy all managed assets inside an intent contract",
+	Use:     "destroy [spec.yaml]",
+	GroupID: "core",
+	Short:   "Tear down active workloads and purge registered tracking state",
 	Long: `Scans the targeted configuration state, calculates a destructive teardown blueprint, 
 and purges all tracked cloud/container assets from the active environment registry.`,
-	Args:  cobra.MaximumNArgs(1),
+	Example: `  nexus destroy
+  nexus destroy docker-test.yaml
+  nexus destroy docker-test.yaml -y`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. Smart File Path Resolution
 		if len(args) > 0 {
@@ -97,14 +101,14 @@ and purges all tracked cloud/container assets from the active environment regist
 		} else {
 			fmt.Print("\n🔥 WARNING: This action cannot be undone! Are you sure you want to destroy these resources?\n")
 			fmt.Print("  Only 'yes' will be accepted to confirm teardown: ")
-			
+
 			reader := bufio.NewReader(os.Stdin)
 			input, err := reader.ReadString('\n')
 			if err != nil {
 				fmt.Printf("❌ Error reading safety gate: %v\n", err)
 				return
 			}
-			
+
 			if strings.TrimSpace(strings.ToLower(input)) != "yes" {
 				fmt.Println("\n🛑 Teardown cancelled. Infrastructure preserved safely.")
 				return
@@ -120,12 +124,12 @@ and purges all tracked cloud/container assets from the active environment regist
 		}
 		defer reg.Close()
 
-		// 6. Acquire Lock Protection to prevent mid-destruction overwrite races
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		// 6. Acquire Lock Protection (10s lock timeout)
+		lockCtx, lockCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer lockCancel()
 
 		fmt.Println("🔒 Requesting environment lease lock protection...")
-		leaseID, acquired, err := reg.AcquireDistributedLock(ctx, "default-tenant", "production", contract.Metadata.Name, "cli-destroyer", 15)
+		leaseID, acquired, err := reg.AcquireDistributedLock(lockCtx, "default-tenant", "production", contract.Metadata.Name, "cli-destroyer", 15)
 		if err != nil {
 			fmt.Printf("❌ Lock Exception: %v\n", err)
 			return
@@ -139,9 +143,12 @@ and purges all tracked cloud/container assets from the active environment regist
 			_ = reg.ReleaseDistributedLock(context.Background(), leaseID)
 		}()
 
-		// 7. Execute Active Teardown Driver Action Operations
+		// 7. Execute Active Teardown Driver Action Operations (3-minute driver allowance)
 		fmt.Printf("🟩 Lock Secured! Dispatching destructive driver logic for: %s...\n", contract.Spec.Provider)
-		
+
+		execCtx, execCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer execCancel()
+
 		switch contract.Spec.Provider {
 		case "docker":
 			prov, err := provider.NewDockerProvider()
@@ -149,7 +156,7 @@ and purges all tracked cloud/container assets from the active environment regist
 				fmt.Printf("❌ Provider Setup Exception: %v\n", err)
 				return
 			}
-			err = prov.Destroy(ctx, contract.Metadata.Name, contract.Spec)
+			err = prov.Destroy(execCtx, contract.Metadata.Name, contract.Spec)
 			if err != nil {
 				fmt.Printf("❌ Destructive Provider Driver Execution Failure: %v\n", err)
 				return
@@ -158,12 +165,12 @@ and purges all tracked cloud/container assets from the active environment regist
 			fmt.Printf("⚠️ Provider '%s' bypassing active driver teardown (Simulation Mode).\n", contract.Spec.Provider)
 			time.Sleep(2 * time.Second)
 		}
-		
+
 		fmt.Println("💥 Remote infrastructure assets torn down successfully.")
 
 		// 8. Purge Configuration State from Core Cluster Memory Space
 		fmt.Println("💾 Purging configuration state entry records from active cluster registry...")
-		err = reg.DeleteContract(ctx, "default-tenant", contract.Metadata.Name)
+		err = reg.DeleteContract(execCtx, "default-tenant", contract.Metadata.Name)
 		if err != nil {
 			fmt.Printf("❌ Registry Purge Failure: %v\n", err)
 			return
@@ -177,6 +184,6 @@ func init() {
 	destroyCmd.Flags().StringVarP(&destroyFile, "file", "f", "", "Explicit path to the contract YAML file to destroy")
 	destroyCmd.Flags().BoolVar(&destroyAutoApprove, "auto-approve", false, "Skip interactive safety prompt and destroy immediately")
 	destroyCmd.Flags().BoolVarP(&destroyYesApprove, "yes", "y", false, "Skip interactive safety prompt and destroy immediately")
-	
+
 	rootCmd.AddCommand(destroyCmd)
 }
