@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nexus-io/nexus/pkg/backend"
 	"github.com/nexus-io/nexus/pkg/engine"
 	"github.com/nexus-io/nexus/pkg/provider"
-	"github.com/nexus-io/nexus/pkg/registry"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -98,7 +98,7 @@ var applyCmd = &cobra.Command{
 			fmt.Println("\n⚠️ Auto-approve flag detected. Bypassing interactive confirmation prompt...")
 		} else {
 			fmt.Print("\nDo you want to perform these actions?\n")
-			fmt.Print("  Only 'yes' will be accepted to approve and proceed: ")
+			fmt.Print("   Only 'yes' will be accepted to approve and proceed: ")
 
 			reader := bufio.NewReader(os.Stdin)
 			input, err := reader.ReadString('\n')
@@ -114,21 +114,21 @@ var applyCmd = &cobra.Command{
 			}
 		}
 
-		// 5. Connect to etcd Registry
-		fmt.Println("\n🔌 Connecting to etcd state backend registry...")
-		reg, err := registry.NewEtcdRegistry([]string{"127.0.0.1:2379"}, 5*time.Second)
+		// 5. Initialize Pluggable State Backend (Auto-discovers local file, nexus.yaml, or etcd)
+		fmt.Println("\n🔌 Initializing state backend storage interface...")
+		bk, err := backend.NewBackend()
 		if err != nil {
-			fmt.Printf("❌ Connection Error: %v\n", err)
+			fmt.Printf("❌ Backend Initialization Error: %v\n", err)
 			return
 		}
-		defer reg.Close()
+		defer bk.Close()
 
 		// 6. Claim the Distributed lease lock
 		lockCtx, lockCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer lockCancel()
 
 		fmt.Println("🔒 Requesting environment lease lock protection...")
-		leaseID, acquired, err := reg.AcquireDistributedLock(lockCtx, "default-tenant", "production", contract.Metadata.Name, "cli-worker", 15)
+		leaseID, acquired, err := bk.AcquireLock(lockCtx, "default-tenant", "production", contract.Metadata.Name, "cli-worker", 15)
 		if err != nil {
 			fmt.Printf("❌ Lock Exception: %v\n", err)
 			return
@@ -141,7 +141,7 @@ var applyCmd = &cobra.Command{
 
 		defer func() {
 			fmt.Println("🔓 Releasing infrastructure environment lock...")
-			_ = reg.ReleaseDistributedLock(context.Background(), leaseID)
+			_ = bk.ReleaseLock(context.Background(), leaseID)
 		}()
 
 		fmt.Println("🟩 Lock Secured! Executing target infrastructure reconciliation...")
@@ -190,9 +190,9 @@ var applyCmd = &cobra.Command{
 			return
 		}
 
-		// 9. Save to database registry
-		fmt.Println("💾 Saving updated intent state and outputs to cluster registry...")
-		err = reg.PutContract(execCtx, "default-tenant", contract.Metadata.Name, updatedBytes)
+		// 9. Save to backend storage driver (Local file, S3, or Etcd)
+		fmt.Println("💾 Saving updated intent state and outputs to state storage backend...")
+		err = bk.PutContract(execCtx, "default-tenant", contract.Metadata.Name, updatedBytes)
 		if err != nil {
 			fmt.Printf("❌ Storage Write Error: %v\n", err)
 			return
