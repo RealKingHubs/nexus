@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/nexus-io/nexus/pkg/engine"
-	"github.com/nexus-io/nexus/pkg/registry"
 	"github.com/nexus-io/nexus/pkg/provider"
+	"github.com/nexus-io/nexus/pkg/registry"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3" // Imported to serialize the updated state configuration
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -23,10 +23,14 @@ var (
 )
 
 var applyCmd = &cobra.Command{
-	Use:   "apply [file]",
-	Short: "Apply an intent contract configuration",
-	Long:  `Applies an intent contract. Automatically detects a YAML file in the current directory if no path is given.`,
-	Args:  cobra.MaximumNArgs(1),
+	Use:     "apply [spec.yaml]",
+	GroupID: "core",
+	Short:   "Reconcile host or cloud infrastructure matching intent spec",
+	Long:    `Applies an intent contract to reach target state. Automatically detects a YAML file in the current directory if no path is explicitly provided.`,
+	Example: `  nexus apply
+  nexus apply docker-test.yaml
+  nexus apply docker-test.yaml -y`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. Smart File Path Resolution
 		if len(args) > 0 {
@@ -95,14 +99,14 @@ var applyCmd = &cobra.Command{
 		} else {
 			fmt.Print("\nDo you want to perform these actions?\n")
 			fmt.Print("  Only 'yes' will be accepted to approve and proceed: ")
-			
+
 			reader := bufio.NewReader(os.Stdin)
 			input, err := reader.ReadString('\n')
 			if err != nil {
 				fmt.Printf("❌ Error reading keyboard input: %v\n", err)
 				return
 			}
-			
+
 			confirmed := strings.TrimSpace(strings.ToLower(input))
 			if confirmed != "yes" {
 				fmt.Println("\n🛑 Apply cancelled by operator. No cloud assets were touched.")
@@ -120,11 +124,11 @@ var applyCmd = &cobra.Command{
 		defer reg.Close()
 
 		// 6. Claim the Distributed lease lock
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		lockCtx, lockCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer lockCancel()
 
 		fmt.Println("🔒 Requesting environment lease lock protection...")
-		leaseID, acquired, err := reg.AcquireDistributedLock(ctx, "default-tenant", "production", contract.Metadata.Name, "cli-worker", 15)
+		leaseID, acquired, err := reg.AcquireDistributedLock(lockCtx, "default-tenant", "production", contract.Metadata.Name, "cli-worker", 15)
 		if err != nil {
 			fmt.Printf("❌ Lock Exception: %v\n", err)
 			return
@@ -140,13 +144,15 @@ var applyCmd = &cobra.Command{
 			_ = reg.ReleaseDistributedLock(context.Background(), leaseID)
 		}()
 
-		fmt.Println("🟩 Lock Secured! Initializing active orchestration loop...")
-		time.Sleep(2 * time.Second) // Small breathing room simulation
-		fmt.Println("✨ Infrastructure state matches intent perfectly. Run finalized.")
+		fmt.Println("🟩 Lock Secured! Executing target infrastructure reconciliation...")
 
 		// 7. Inject Live Cloud Provider Interface Driver Processing Logic
 		fmt.Printf("📡 Initializing live cloud provider infrastructure driver for: %s...\n", contract.Spec.Provider)
 		var liveStatus engine.Status
+
+		// Use a dedicated execution context (3-minute allowance for image pulls/cloud provisioning)
+		execCtx, execCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer execCancel()
 
 		switch contract.Spec.Provider {
 		case "docker":
@@ -155,13 +161,12 @@ var applyCmd = &cobra.Command{
 				fmt.Printf("❌ Provider Setup Exception: %v\n", err)
 				return
 			}
-			liveStatus, err = prov.Reconcile(ctx, contract.Metadata.Name, contract.Spec)
+			liveStatus, err = prov.Reconcile(execCtx, contract.Metadata.Name, contract.Spec)
 			if err != nil {
 				fmt.Printf("❌ Infrastructure Orchestration Convergence Failure: %v\n", err)
 				return
 			}
 		default:
-			// Graceful structural fallback to simulated data for other systems (e.g., AWS standalone stub)
 			fmt.Printf("⚠️ Provider '%s' lacking native runtime driver. Falling back to simulation mode...\n", contract.Spec.Provider)
 			liveStatus = engine.GenerateRuntimeStatus()
 		}
@@ -177,7 +182,7 @@ var applyCmd = &cobra.Command{
 
 		// 9. Save to database registry
 		fmt.Println("💾 Saving updated intent state and outputs to cluster registry...")
-		err = reg.PutContract(ctx, "default-tenant", contract.Metadata.Name, updatedBytes)
+		err = reg.PutContract(execCtx, "default-tenant", contract.Metadata.Name, updatedBytes)
 		if err != nil {
 			fmt.Printf("❌ Storage Write Error: %v\n", err)
 			return
@@ -190,6 +195,7 @@ var applyCmd = &cobra.Command{
 			fmt.Printf("🔹 %-15s = %s\n", key, val)
 		}
 		fmt.Println("----------------------------------------------------------------------")
+		fmt.Println("✨ Infrastructure state matches intent perfectly. Run finalized successfully!")
 	},
 }
 
@@ -197,6 +203,6 @@ func init() {
 	applyCmd.Flags().StringVarP(&file, "file", "f", "", "Explicit path to the intent contract YAML file")
 	applyCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip interactive confirmation and deploy immediately")
 	applyCmd.Flags().BoolVarP(&yesApprove, "yes", "y", false, "Skip interactive confirmation and deploy immediately")
-	
+
 	rootCmd.AddCommand(applyCmd)
 }
