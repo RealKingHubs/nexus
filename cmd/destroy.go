@@ -11,6 +11,7 @@ import (
 
 	"github.com/nexus-io/nexus/pkg/engine"
 	"github.com/nexus-io/nexus/pkg/registry"
+	"github.com/nexus-io/nexus/pkg/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -138,9 +139,26 @@ and purges all tracked cloud/container assets from the active environment regist
 			_ = reg.ReleaseDistributedLock(context.Background(), leaseID)
 		}()
 
-		// 7. Execute Teardown Action Loop
-		fmt.Println("🟩 Lock Secured! Initializing destructive orchestration loop...")
-		time.Sleep(2 * time.Second) // Simulated API call time
+		// 7. Execute Active Teardown Driver Action Operations
+		fmt.Printf("🟩 Lock Secured! Dispatching destructive driver logic for: %s...\n", contract.Spec.Provider)
+		
+		switch contract.Spec.Provider {
+		case "docker":
+			prov, err := provider.NewDockerProvider()
+			if err != nil {
+				fmt.Printf("❌ Provider Setup Exception: %v\n", err)
+				return
+			}
+			err = prov.Destroy(ctx, contract.Metadata.Name, contract.Spec)
+			if err != nil {
+				fmt.Printf("❌ Destructive Provider Driver Execution Failure: %v\n", err)
+				return
+			}
+		default:
+			fmt.Printf("⚠️ Provider '%s' bypassing active driver teardown (Simulation Mode).\n", contract.Spec.Provider)
+			time.Sleep(2 * time.Second)
+		}
+		
 		fmt.Println("💥 Remote infrastructure assets torn down successfully.")
 
 		// 8. Purge Configuration State from Core Cluster Memory Space

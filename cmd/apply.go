@@ -11,6 +11,7 @@ import (
 
 	"github.com/nexus-io/nexus/pkg/engine"
 	"github.com/nexus-io/nexus/pkg/registry"
+	"github.com/nexus-io/nexus/pkg/provider"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3" // Imported to serialize the updated state configuration
 )
@@ -143,11 +144,31 @@ var applyCmd = &cobra.Command{
 		time.Sleep(2 * time.Second) // Small breathing room simulation
 		fmt.Println("✨ Infrastructure state matches intent perfectly. Run finalized.")
 
-		// 7. Inject Cloud Provider Outputs & Generate Status
-		fmt.Println("📡 Querying runtime status parameters from cloud provider API...")
-		contract.Status = engine.GenerateRuntimeStatus()
+		// 7. Inject Live Cloud Provider Interface Driver Processing Logic
+		fmt.Printf("📡 Initializing live cloud provider infrastructure driver for: %s...\n", contract.Spec.Provider)
+		var liveStatus engine.Status
 
-		// 8. Serialize updated object containing spec + status fields combined
+		switch contract.Spec.Provider {
+		case "docker":
+			prov, err := provider.NewDockerProvider()
+			if err != nil {
+				fmt.Printf("❌ Provider Setup Exception: %v\n", err)
+				return
+			}
+			liveStatus, err = prov.Reconcile(ctx, contract.Metadata.Name, contract.Spec)
+			if err != nil {
+				fmt.Printf("❌ Infrastructure Orchestration Convergence Failure: %v\n", err)
+				return
+			}
+		default:
+			// Graceful structural fallback to simulated data for other systems (e.g., AWS standalone stub)
+			fmt.Printf("⚠️ Provider '%s' lacking native runtime driver. Falling back to simulation mode...\n", contract.Spec.Provider)
+			liveStatus = engine.GenerateRuntimeStatus()
+		}
+
+		contract.Status = liveStatus
+
+		// 8. Serialize updated object containing spec + live status fields combined
 		updatedBytes, err := yaml.Marshal(contract)
 		if err != nil {
 			fmt.Printf("❌ Failed to serialize runtime status updates: %v\n", err)
